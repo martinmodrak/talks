@@ -1,0 +1,172 @@
+---
+title: "Intro to Bayes via RNA-seq"
+author: "Martin Modrák"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: ["default", "metropolis-fonts", "slides.css" ]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: true
+---
+class: center inverse
+
+# What is Bayes?
+
+
+---
+
+
+
+---
+
+```{r setup, include = FALSE}
+library(brms)
+library(rstanarm)
+library(bayesplot)
+library(here)
+library(cowplot)
+library(parallel)
+library(knitr)
+options(mc.cores = parallel::detectCores())
+rstan::rstan_options(auto_write = TRUE)
+
+
+opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+
+fits_dir <- here("stored_fits")
+if(!dir.exists(fits_dir)) {
+  dir.create(fits_dir)
+}
+
+```
+
+```{r load_counts}
+counts_raw <- readRDS(here("subset_Acute_Myeloid_Leukemia_Primary_Blood_Derived_Cancer_-_Peripheral_Blood.rds"))
+
+N <- 6
+G <- counts_raw$G
+counts <- counts_raw$counts_tidy %>% transmute(gene = ens_iso, count = `read count`, sample = sample) %>% droplevels()  %>% 
+  mutate(gene = gsub("0000000","", gene, fixed = TRUE) %>% factor()) %>%
+  filter(gene %in% unique(gene)[1:N])
+                      
+base_formula <- count ~ 0 + gene
+```
+
+```{r}
+plot_counts <- function(counts) {
+  counts %>% group_by(gene) %>% 
+    filter(sum(count) > 0) %>%
+    ggplot(aes(count)) + 
+    #stat_bin(bins = 30, geom = "step")  + 
+    geom_histogram(bins = 10) +
+    facet_wrap(~gene, scales = "free")  
+}
+```
+
+
+
+
+```{r simulate_poisson}
+simulate_poisson <- function(N, G, mean_log, sd_log) {
+  tibble(gene = sprintf("Gene%02d", 1:G), mean = rlnorm(G, mean_log, sd_log)) %>% rowwise() %>% 
+    do(tibble(gene = .$gene, mean = .$mean, count = rpois(N, .$mean))) %>% ungroup()
+  
+}
+
+simulate_poisson(N,G,0,1) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,1)")
+simulate_poisson(N,G,0,10) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,10)")
+```
+
+
+```{r}
+plot_fit <- function(counts, fit) {
+  predicted <- posterior_predict(fit) %>% t() %>% as.data.frame() %>% cbind(counts %>% select(gene, count)) %>%
+    rename(observed = count) %>%
+    gather("mcmc_sample","estimated", -gene, -observed) %>%
+    gather("source","count", observed, estimated)
+  
+  #counts_to_plot <- counts %>% select(count, gene) %>% mutate(mcmc_sample = -1, source = "data")
+  
+  predicted %>% #rbind(counts_to_plot) %>%
+    ggplot(aes(count, color = source, fill = source)) +
+    #geom_density(alpha = 0.5) +
+    stat_bin(geom = "step", position = "identity", bins=15, alpha = 0.7, size = 1.1) +
+    facet_wrap(~gene, scales = "free", ncol = 3) + 
+    theme(axis.text.y = element_blank())
+}
+```
+
+
+```{r fit_poisson}
+poiss_file <- paste0(fits_dir, "/poisson.rds")
+if(!file.exists(poiss_file)) {
+  fit_poisson <-  stan_glm(base_formula, family = poisson(), data = counts, prior = rstanarm::normal(0, 10))
+  saveRDS(fit_poisson, poiss_file)
+} else {
+  fit_poisson <- readRDS(poiss_file)
+}
+```
+
+```{r}
+plot_fit(counts, fit_poisson)
+```
+
+
+```{r}
+pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = mean) + ggtitle("Poisson - PPCheck mean")
+pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = sd) + ggtitle("Poisson - PPCheck sd")
+
+```
+```{r fit_nb}
+nb_file <- paste0(fits_dir,"/nb.rds")
+if(!file.exists(nb_file)) {
+  fit_nb <- stan_glm.nb(base_formula, data = counts, prior = rstanarm::normal(0, 10))
+  saveRDS(fit_nb, nb_file)
+} else {
+  fit_nb <- readRDS(nb_file)
+}
+```
+
+```{r}
+plot_fit(counts, fit_nb)
+```
+
+
+```{r}
+pp_check(fit_nb, plotfun = "stat_grouped", group = counts$gene, stat = sd) + ggtitle("NB - PPCheck sd")
+
+```
+
+
+```{r fit_nb_shape}
+
+fit_nb_shape <-  brm(bf(base_formula, shape ~ 0 + gene), data = counts, family = "negbinomial")
+```
+
+```{r}
+plot_fit(counts, fit_nb_shape)
+```
+
+
+```{r}
+pp_check(fit_nb_shape, type = "stat_grouped", group = "gene", stat = sd) + ggtitle("NB + overdispersion")
+
+```
+
+```{r}
+fit_nb_shape_sample <-  brm(bf(count ~ gene + sample, shape ~ gene), data = counts, family = "negbinomial")
+```
+
+```{r}
+pp_check(fit_nb_shape_sample, type = "stat_grouped", group = "gene", stat = sd)
+
+```
+
+
+--
+
+* Code available at https://github.com/martinmodrak/talks
