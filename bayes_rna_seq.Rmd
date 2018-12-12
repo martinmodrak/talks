@@ -10,17 +10,14 @@ output:
       highlightLines: true
       countIncrementalSlides: true
 ---
-class: center inverse
 
 # What is Bayes?
 
-
----
+--
 
 * My personal favourite:
-* Being a Bayesian means quantifying uncertainty with probability distributions.
+ * Being a Bayesian means quantifying uncertainty with probability distributions.
 
----
 
 ```{r setup, include = FALSE}
 library(brms)
@@ -46,11 +43,7 @@ if(!dir.exists(fits_dir)) {
 ```
 
 
----
 
-
-
----
 
 
 ```{r load_counts}
@@ -82,9 +75,33 @@ plot_counts <- function(counts) {
 
 --
 
+```
+lm(count ~ gene, family = poisson)
+```
+
+--
+
 $$
-X_i ~ 
+\begin{align}
+X_i &\sim Poisson(\mu_i)  \\
+log(\mu_i) &= \alpha_i
+\end{align}
 $$
+
+--
+$$
+\alpha_i \sim N(0, 1)
+$$
+---
+
+# Bayes rule
+
+$$
+P(\alpha | X) = \frac{P(X | \alpha) P(\alpha)}{P(X)}
+$$
+
+
+---
 
 
 ```{r simulate_poisson}
@@ -95,6 +112,11 @@ simulate_poisson <- function(N, G, mean_log, sd_log) {
 }
 
 simulate_poisson(N,G,0,1) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,1)")
+```
+
+---
+
+```{r}
 simulate_poisson(N,G,0,10) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,10)")
 ```
 
