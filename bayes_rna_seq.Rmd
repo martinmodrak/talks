@@ -17,7 +17,8 @@ class: center inverse
 
 ---
 
-
+* My personal favourite:
+* Being a Bayesian means quantifying uncertainty with probability distributions.
 
 ---
 
@@ -44,6 +45,14 @@ if(!dir.exists(fits_dir)) {
 
 ```
 
+
+---
+
+
+
+---
+
+
 ```{r load_counts}
 counts_raw <- readRDS(here("subset_Acute_Myeloid_Leukemia_Primary_Blood_Derived_Cancer_-_Peripheral_Blood.rds"))
 
@@ -67,7 +76,15 @@ plot_counts <- function(counts) {
 }
 ```
 
+---
 
+# Poisson "regression"
+
+--
+
+$$
+X_i ~ 
+$$
 
 
 ```{r simulate_poisson}
@@ -143,8 +160,9 @@ pp_check(fit_nb, plotfun = "stat_grouped", group = counts$gene, stat = sd) + ggt
 
 
 ```{r fit_nb_shape}
-
-fit_nb_shape <-  brm(bf(base_formula, shape ~ 0 + gene), data = counts, family = "negbinomial")
+priors <- c(prior(normal(0, 10), class = b),
+            prior(normal(0, 2), dpar = shape))
+fit_nb_shape <-  brm(bf(base_formula, shape ~ 0 + gene), data = counts, family = "negbinomial", prior = priors, file = paste0(fits_dir,"/nb_shape.rds"))
 ```
 
 ```{r}
@@ -157,15 +175,7 @@ pp_check(fit_nb_shape, type = "stat_grouped", group = "gene", stat = sd) + ggtit
 
 ```
 
-```{r}
-fit_nb_shape_sample <-  brm(bf(count ~ gene + sample, shape ~ gene), data = counts, family = "negbinomial")
-```
-
-```{r}
-pp_check(fit_nb_shape_sample, type = "stat_grouped", group = "gene", stat = sd)
-
-```
-
+---
 
 --
 
