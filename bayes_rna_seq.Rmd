@@ -11,14 +11,6 @@ output:
       countIncrementalSlides: true
 ---
 
-# What is Bayes?
-
---
-
-* My personal favourite:
- * Being a Bayesian means quantifying uncertainty with probability distributions.
-
-
 ```{r setup, include = FALSE}
 library(brms)
 library(rstanarm)
@@ -31,7 +23,7 @@ options(mc.cores = parallel::detectCores())
 rstan::rstan_options(auto_write = TRUE)
 
 
-opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 10)
 
 library(tidyverse)
 
@@ -43,17 +35,46 @@ if(!dir.exists(fits_dir)) {
 ```
 
 
+# What is Bayes?
+
+--
+
+* My personal favourite:
+ * Being a Bayesian means quantifying uncertainty with probability distributions.
+
+--
+
+Instead of $\alpha \neq 0, p = 0.001$, 95% CI = $(0.01, 3)$, ...
+
+--
+
+Just say
+
+
+```{r, fig.width=4, fig.height = 2}
+tibble(alpha = rgamma(1000, 10, 10)) %>% ggplot(aes(x=alpha)) + geom_density()
+```
+
+
+---
+
+#Example
+
+![](bayes_rna_seq_img/example_fit.png)
+
+
+
 
 
 
 ```{r load_counts}
 counts_raw <- readRDS(here("subset_Acute_Myeloid_Leukemia_Primary_Blood_Derived_Cancer_-_Peripheral_Blood.rds"))
 
-N <- 6
-G <- counts_raw$G
+G <- 6
+N <- counts_raw$N
 counts <- counts_raw$counts_tidy %>% transmute(gene = ens_iso, count = `read count`, sample = sample) %>% droplevels()  %>% 
   mutate(gene = gsub("0000000","", gene, fixed = TRUE) %>% factor()) %>%
-  filter(gene %in% unique(gene)[1:N])
+  filter(gene %in% unique(gene)[1:G])
                       
 base_formula <- count ~ 0 + gene
 ```
@@ -101,8 +122,19 @@ P(\alpha | X) = \frac{P(X | \alpha) P(\alpha)}{P(X)}
 $$
 
 
+--
+
+## Relationship to frequentist
+
+--
+
+Frequentist confidence interval $\simeq$ 
+
+Bayesian posterior interval w/o prior
+
 ---
 
+# Determining prior
 
 ```{r simulate_poisson}
 simulate_poisson <- function(N, G, mean_log, sd_log) {
@@ -115,6 +147,8 @@ simulate_poisson(N,G,0,1) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,1)")
 ```
 
 ---
+
+#Determining prior 2
 
 ```{r}
 simulate_poisson(N,G,0,10) %>% plot_counts() + ggtitle("Poisson, Prior = N(0,10)")
@@ -139,6 +173,9 @@ plot_fit <- function(counts, fit) {
 }
 ```
 
+---
+
+# Visualise posterior
 
 ```{r fit_poisson}
 poiss_file <- paste0(fits_dir, "/poisson.rds")
@@ -154,12 +191,47 @@ if(!file.exists(poiss_file)) {
 plot_fit(counts, fit_poisson)
 ```
 
+---
+
+# Poisson - PPCheck mean
 
 ```{r}
-pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = mean) + ggtitle("Poisson - PPCheck mean")
-pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = sd) + ggtitle("Poisson - PPCheck sd")
+pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = mean)
 
 ```
+
+---
+
+# Poisson - PPCheck sd
+
+```{r}
+pp_check(fit_poisson, plotfun = "stat_grouped", group = counts$gene, stat = sd)
+
+```
+
+---
+
+# Negative binomial
+
+$$
+\begin{align}
+X_i &\sim NB(\mu_i, \phi)  \\
+log(\mu_i) &= \alpha_i
+\end{align}
+$$
+
+--
+$$
+\begin{align}
+\alpha_i &\sim N(0, 10) \\
+log(\phi) &\sim N(0, 2) 
+\end{align}
+$$
+
+---
+
+# NB - visualize posterior
+
 ```{r fit_nb}
 nb_file <- paste0(fits_dir,"/nb.rds")
 if(!file.exists(nb_file)) {
@@ -174,12 +246,36 @@ if(!file.exists(nb_file)) {
 plot_fit(counts, fit_nb)
 ```
 
+---
+# NB - PPCheck sd
 
 ```{r}
-pp_check(fit_nb, plotfun = "stat_grouped", group = counts$gene, stat = sd) + ggtitle("NB - PPCheck sd")
+pp_check(fit_nb, plotfun = "stat_grouped", group = counts$gene, stat = sd) 
 
 ```
 
+---
+
+# Negative binomial 2
+
+$$
+\begin{align}
+X_i &\sim NB(\mu_i, \phi_i)  \\
+log(\mu_i) &= \alpha_i
+\end{align}
+$$
+
+--
+$$
+\begin{align}
+\alpha_i &\sim N(0, 10) \\
+log(\phi_i) &\sim N(0, 2) 
+\end{align}
+$$
+
+---
+
+# NB 2 - visualize posterior
 
 ```{r fit_nb_shape}
 priors <- c(prior(normal(0, 10), class = b),
@@ -191,14 +287,40 @@ fit_nb_shape <-  brm(bf(base_formula, shape ~ 0 + gene), data = counts, family =
 plot_fit(counts, fit_nb_shape)
 ```
 
+---
+
+# NB 2 - PPCheck SD
 
 ```{r}
-pp_check(fit_nb_shape, type = "stat_grouped", group = "gene", stat = sd) + ggtitle("NB + overdispersion")
+pp_check(fit_nb_shape, type = "stat_grouped", group = "gene", stat = sd)
 
 ```
 
 ---
 
+# Take home
+
 --
 
-* Code available at https://github.com/martinmodrak/talks
+* Embrace uncertainty 
+
+--
+
+* Bayes let's us use simulation to understand models 
+
+--
+
+* Modern Bayes tools let us build coooomplex models
+
+
+--
+
+## Further reading:
+
+* Visualization in Bayesian Workflow (Gabry et al., 2018)
+* Towards A Principled Bayesian Workflow (Betancourt, 2018 - case study)
+* Stan, rstanarm, brms docs
+
+--
+
+Code available at https://github.com/martinmodrak/talks
