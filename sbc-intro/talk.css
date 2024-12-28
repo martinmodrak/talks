@@ -1,0 +1,14 @@
+
+.remark-slide .remark-slide-content {
+  font-size: 30px;
+}
+
+.remark-slide .remark-code {
+  font-size: 25px;
+}
+
+
+.remark-slide > .inverse {
+  background:#888;
+  color:white;
+}

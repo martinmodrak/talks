@@ -1,0 +1,396 @@
+---
+title: "Validating Bayesian computation with simulation-based calibration
+checking"
+author: "Martin Modrák"
+date: "2024/12/19"
+output:
+  xaringan::moon_reader:
+    self_contained: true
+    lib_dir: ./libs
+    css: ["hygge", "middlebury-fonts", "ninjutsu", "./talk.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+# Outline
+
+- Why should I care?
+
+- WTAF is SBC?
+
+- Actually using it? 
+
+Following [Modrák et al. 2023](https://10.1214/23-BA1404) - _Simulation-Based Calibration Checking for Bayesian Computation: The Choice of Test Quantities Shapes Sensitivity_
+
+
+---
+class: inverse center middle
+
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+library(SBC)
+library(ggplot2)
+
+theme_set(theme_minimal())
+knitr::opts_chunk$set(echo=FALSE, cache = TRUE, fig.width = 4, fig.height=2.5)
+```
+
+
+# Simulation-based calibration checking = SBC
+
+## Why?
+
+
+---
+
+# Model workflow
+
+(following Gelman et al. - [Bayesian Workflow](https://arxiv.org/abs/2011.01808), arXiv:2011.01808)
+
+- Prior predictive checks 
+
+--
+
+- Validate computation 
+
+--
+
+- Evaluate model fit to real data 
+  - Posterior predictive checks 
+  
+--
+
+- Use the model
+
+---
+
+# Model workflow
+
+(following Gelman et al. - [Bayesian Workflow](https://arxiv.org/abs/2011.01808), arXiv:2011.01808)
+
+- Prior predictive checks
+
+- Validate computation **⬅ SBC lives here**
+
+- Evaluate model fit to real data
+  - Posterior predictive checks 
+  
+- Use the model
+
+
+---
+
+# Types of computational problems
+
+1. Bug in model 
+
+--
+
+2. Bad algorithm / approximation
+
+---
+
+# Simulation to the rescue!
+
+--
+
+How to seperate computational problems from model-data mismatch?
+
+--
+
+- If we simulate data _exactly_ as the model assumes, any problem has to be in the computation.
+
+---
+
+# How to spot failure?
+
+```
+  variable      mean    sd        q5      q95
+   alpha        0.372 0.224   0.00794   0.737 
+```
+
+Is this OK, if we simulated
+
+- `alpha = 0.3`
+
+--
+
+-  `alpha = 0.007`
+
+--
+
+-  `alpha = -30`
+
+--
+
+Diagnostics (divergences, Rhat, ESS)
+
+# How to spot success?!
+
+---
+class: inverse center middle
+
+# Simulation-based calibration checking = SBC
+
+## How does it work?
+
+
+---
+
+# Consistency requirement
+
+"In 95% of simulations, the true variable lies within the central 95% posterior credible interval."
+
+
+  - Variable = parameter or a function of parameter(s) and data
+
+--
+
+"In x% of simulations, the true varible lies within the x% posterior credible interval (of any kind)"
+
+---
+
+# SBC for single parameter:
+
+
+1. Thin posterior to get $S$ independent samples.
+
+--
+
+2. For each simulation take the rank of the true value within the samples
+  - Rank: no. of samples < true value
+
+--
+
+3. Across simulations, this rank should be uniformly distributed between $0$ and $S$
+
+---
+class: split-three
+
+.row[.content[
+
+# SBC visualisations - Ranks 
+
+]]
+
+.row[.content[
+
+```{r, warning=FALSE}
+set.seed(216456)
+
+max_rank <- 100
+N_ranks <- 200
+
+rank_dfs <- list(
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 1, shape2 = 1) * max_rank)),
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 0.5, shape2 = 0.5) * max_rank)),
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 2, shape2 = 2) * max_rank)),
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 5, shape2 = 2) * max_rank)),
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 1, shape2 = 2) * max_rank))
+)
+
+suppressWarnings(plot_rank_hist(rank_dfs[[1]], max_rank = max_rank) + ggtitle("Uniform"))
+suppressWarnings(plot_rank_hist(rank_dfs[[2]], max_rank = max_rank) + ggtitle("Model too certain"))
+suppressWarnings(plot_rank_hist(rank_dfs[[3]], max_rank = max_rank) + ggtitle("Model too uncertain"))
+```
+
+]]
+
+.row[.content[
+
+```{r, warning=FALSE}
+plot_rank_hist(rank_dfs[[4]], max_rank = max_rank) + ggtitle("Model underestimating")
+plot_rank_hist(rank_dfs[[5]], max_rank = max_rank) + ggtitle("Model overestimating")
+
+```
+
+]]
+
+
+---
+
+class: split-three
+
+.row[.content[
+
+# SBC visualisations - ECDF 
+
+a.k.a. "black line outside blue region is a problem"
+
+
+]]
+
+.row[.content[
+
+
+```{r}
+plot_ecdf(rank_dfs[[1]], max_rank = max_rank) + ggtitle("Uniform")
+plot_ecdf(rank_dfs[[2]], max_rank = max_rank) + ggtitle("Model too certain")
+plot_ecdf(rank_dfs[[3]], max_rank = max_rank) + ggtitle("Model too uncertain")
+```
+
+]]
+
+.row[.content[
+
+```{r}
+plot_ecdf(rank_dfs[[4]], max_rank = max_rank) + ggtitle("Model underestimating")
+plot_ecdf(rank_dfs[[5]], max_rank = max_rank) + ggtitle("Model overestimating")
+
+```
+
+]]
+
+
+---
+
+class: split-three
+
+.row[.content[
+
+# SBC visualisations - ECDF diff
+
+a.k.a. "black line outside blue region is a problem, rotated for readability"
+
+]]
+
+.row[.content[
+
+
+```{r}
+plot_ecdf_diff(rank_dfs[[1]], max_rank = max_rank) + ggtitle("Uniform")
+plot_ecdf_diff(rank_dfs[[2]], max_rank = max_rank) + ggtitle("Model too certain")
+plot_ecdf_diff(rank_dfs[[3]], max_rank = max_rank) + ggtitle("Model too uncertain")
+```
+
+]]
+
+.row[.content[
+
+```{r}
+plot_ecdf_diff(rank_dfs[[4]], max_rank = max_rank) + ggtitle("Model underestimating")
+plot_ecdf_diff(rank_dfs[[5]], max_rank = max_rank) + ggtitle("Model overestimating")
+
+```
+
+]]
+
+---
+
+# Result of SBC (1)
+
+### SBC fails: There is a mismatch between our model, algorithm and simulator.
+
+```{r}
+set.seed(216456)
+
+max_rank <- 100
+N_ranks <- 200
+
+rank_dfs <- list(
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 0.8, shape2 = 1.2) * max_rank)),
+  data.frame(variable = "beta", sim_id = 1:N_ranks, rank = round(rbeta(N_ranks, shape1 = 1, shape2 = 1) * max_rank))
+)
+
+plot_ecdf_diff(rank_dfs[[1]], max_rank = max_rank)
+```
+
+
+--
+
+&nbsp;&nbsp;&nbsp;&nbsp; The mismatch can be anywhere!
+
+---
+
+# Result of SBC (2)
+
+
+### SBC passes: To the precision availabe with the given number of simulations, our model, algorithm and simulator are consistent.
+
+```{r}
+plot_ecdf_diff(rank_dfs[[2]], max_rank = max_rank)
+```
+
+---
+class: inverse center middle
+
+# Simulation-based calibration checking = SBC
+
+## Practical considerations
+
+---
+
+# SBC in default settings is insufficient
+
+If the prior matches the posterior always (e.g. we ignore data)...
+
+--
+
+... SBC for any model parameter will pass.
+
+
+---
+
+# SBC with derived quantities is sufficient
+
+Wrong implementation/algorithm -> some derived quantity fails SBC
+
+- Data-dependent quantities necessary
+
+--
+
+- Density ratio - unusable
+
+--
+
+- Likelihood - pretty good
+
+See [Modrák et al. 2023](https://10.1214/23-BA1404) for more formal theory and proof.
+
+---
+
+# Side effects of SBC
+
+- Prior predictive checks
+
+- Posterior/prior shrinkage
+
+--
+
+Good priors often required - but can be [sidestepped via rejection sampling](https://hyunjimoon.github.io/SBC/articles/rejection_sampling.html)
+
+---
+
+# Software support
+
+- R: the SBC package (https://hyunjimoon.github.io/SBC/)
+
+- Python: SBC visualisations via Arviz
+
+- Relatively simple to implement manually 
+--
+  - Except for visualisations
+
+---
+class: inverse center middle
+
+# Simulation-based calibration checking = SBC
+
+## Conclusions
+
+---
+
+# Main takeaways
+
+- SBC let's you check for bugs in your model and inaccuracies in your MCMC algorithm.
+
+--
+
+- Once you have code to create simulated data, adding SBC is not hard.
+
+--
+
+- SBC with derived quantities is very powerful
